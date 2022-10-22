@@ -1,0 +1,127 @@
+module.exports = {
+	config: {
+		name: 'shop',
+		category: 'eco',
+		cooldown: 2,
+		aliases: ['sklep'],
+		description: 'Sklep.'
+	},
+	run: async(bot, message, args) => {
+		if(bot.game.invcds.has(message.author.id+'-1')){
+			const cd = bot.game.invcds.get(message.author.id+'-1');
+			const mg = bot.client.channels.cache.get(cd[0]).messages.cache.get(cd[1]);
+			if(!mg) bot.game.invcds.delete(message.author.id+'-1')
+			else return message.say({embeds: [new bot.Embed().setColor('#fffffe').setTimestamp().setDescription(`Твой магазин уже ${mg.guild.id === message.guild.id ? `[вызван](${mg.url}).` : `где-то вызван.`}`)]}).then(x => {
+				setTimeout(() => x.delete(), 10000);
+			})
+		}
+		// if(bot.game.invcds.has(message.author.id)){
+		// 	const cd = bot.game.invcds.get(message.author.id);
+		// 	cd[2].stop();
+		// }
+		const user = await bot.db.user.findOne({id: message.author.id});
+
+		const list = Object.keys(bot.game.items).concat(Object.keys(bot.game.boxes)).filter(x => x!=='Box').map(x => bot.game.resolve(x)).filter(x => x.flags.has('BUYABLE'));
+		let desc = '', options = [], current;
+		for(const item of list){
+			desc += `**\`${`${item.prices[0]}`.padEnd(4, ' ')} ¥\`** ${item.emoji} ${item.name}\n`;
+			options.push({emoji: item.emoji, label: item.name, description: item.description, value: item.id+'-1'});
+		}
+		const emb = new bot.Embed()
+		.setColor('#fffffe')
+		.setTimestamp()
+		.setFooter({text: `Баланс: ${user.money.toLocaleString()} ¥`})
+		.setAuthor({name: `${message.author.tag} | Магазин`, iconURL: message.author.avatarURL({format: 'png', dynamic: true})})
+		.setDescription(desc);
+		
+		const menu = new Discord.MessageActionRow()
+			.addComponents(new Discord.MessageSelectMenu()
+				.setCustomId('shop_select')
+				.setPlaceholder('Выбрать товар')
+				.setOptions(options));
+		const back = new Discord.MessageActionRow()
+			.addComponents(new Discord.MessageButton()
+				.setStyle('SECONDARY')
+				.setLabel('Вернуться')
+				.setCustomId('back_shop'));
+
+		const msg = await message.say({embeds: [emb], components: [menu]});
+		bot.game.invcds.set(message.author.id+'-1', [message.channel.id, msg.id]);
+		const filter = i => i.user.id === message.author.id&&['shop_select', 'count_shop', 'shop_buy', 'back_shop'].includes(i.customId) ? true : i.deferUpdate();
+		const collector = message.channel.createMessageComponentCollector({filter, idle: 120000});
+		bot.game.invcds.set(message.author.id+'-1', [message.channel.id, msg.id, collector]);
+		const actions = {
+			'count_shop': async(i) => {
+				const c = i.message.components;
+				c[0].components[0].options.find(x => x.default).default = false;
+				c[0].components[0].options.find(x => x.value === i.values[0]).default = true;
+				await i.update({components: c});
+			},
+			'back_shop': async(i) => {
+				const emb = new bot.Embed()
+				.setColor('#fffffe')
+				.setTimestamp()
+				.setFooter({text: `Баланс: ${user.money.toLocaleString()} ¥`})
+				.setDescription(desc)
+				.setAuthor({name: `${message.author.tag} | Магазин`, iconURL: message.author.avatarURL({format: 'png', dynamic: true})});
+				await i.update({embeds: [emb], components: [menu]})
+			},
+			'shop_select': async(i) => {
+				current = bot.game.resolve(i?.values?.[0].split('-')[0]);
+				const emb = new bot.Embed()
+				.setColor('#fffffe')
+				.setTimestamp()
+				.setAuthor({name: `${message.author.tag} | Магазин`, iconURL: message.author.avatarURL({format: 'png', dynamic: true})})
+				.setDescription(`${current.emoji} ${current.name}\n${current.description}\nЦена – **\`${current.prices[0].toLocaleString()} ¥\`**`)
+				.setFooter({text: `ID: ${current.id}`});
+
+				const canBuy = ~~(user.money / current.prices[0]) > 10 ? 10 : ~~(user.money / current.prices[0]);
+
+				if(canBuy === 0) return await i.update({embeds: [emb], components: [back]});
+				const total = ~~(user.money / current.prices[0]);
+				const options = [];
+				for(let i = 1; i < canBuy+1; i++){
+					options.push({emoji: bot.game.util.emojiNum[i-1], label: current.name, description: `Ты купишь x${i} ${current.name}`, value: `buy_${i}`, default: !(i-1)})
+				}
+				if(total > 10) options.push({emoji: '🔢', label: 'Всё', description: `Ты купишь x${total} ${current.name}`, value: `buy_${total}`});
+				const count = new Discord.MessageActionRow()
+					.addComponents(new Discord.MessageSelectMenu()
+						.setCustomId('count_shop')
+						.setPlaceholder('Выбери кол-во')
+						.setOptions(options));
+				const buy = new Discord.MessageActionRow()
+					.addComponents(new Discord.MessageButton()
+						.setStyle('SECONDARY')
+						.setLabel('Вернуться')
+						.setCustomId('back_shop'))
+					.addComponents(new Discord.MessageButton()
+						.setStyle('SUCCESS')
+						.setLabel('Купить')
+						.setCustomId('shop_buy'));
+				await i.update({embeds: [emb], components: [count, buy]})
+			},
+			'shop_buy': async(i) => {
+				const count = +i.message.components[0].components[0].options.find(x => x.default).value.split('_')[1];
+
+				user.money -= count * current.prices[0];
+				user.items.has(current.id) ? user.items.set(current.id, user.items.get(current.id) + count) : user.items.set(current.id, count);
+				user.save();
+				const emb = new bot.Embed()
+				.setColor('#fffffe')
+				.setTimestamp()
+				.setFooter({text: `Баланс: ${user.money.toLocaleString()} ¥`})
+				.setAuthor({name: `${message.author.tag} | Магазин`, iconURL: message.author.avatarURL({format: 'png', dynamic: true})})
+				.setDescription(`Куплено **\`x${count}\`** ${current.emoji} ${current.name} за **\`${(count*current.prices[0]).toLocaleString()} ¥\`**\n— Спасибо за покупку!`);
+
+				await i.update({embeds: [emb], components: [back]})
+			}
+		}
+		collector.on('collect', async i => {
+			await actions[i.customId](i);
+		});
+		collector.on('end', async() => {
+			bot.game.invcds.delete(message.author.id+'-1');
+			await msg.edit({components: []});
+		});
+	}
+}

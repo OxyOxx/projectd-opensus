@@ -1,0 +1,47 @@
+module.exports = {
+	data: {
+		name: 'translate',
+		description: 'Просто переводчик',
+		options: [{
+			type: 3,
+  			name: 'текст',
+  			description: 'Текст для перевода',
+  			required: true
+  		},
+		{
+			choices: [{name: 'Английский', value: 'en'},
+					{name: 'Украинский', value: 'uk'},
+					{name: 'фашистский', value: 'ru'}],
+  			type: 3,
+  			name: 'на',
+  			description: 'Перевод НА',
+  			required: true
+  		},
+		{
+			choices: [{name: 'Английского', value: 'en'},
+					{name: 'Украинского', value: 'uk'},
+					{name: 'фашистского', value: 'ru'}],
+			type: 3,
+  			name: 'с',
+  			description: 'Перевод С',
+  			required: false
+  		}]
+	},
+	async run(bot, interaction) {
+		const text = interaction.options.getString('текст'),
+		from = interaction.options.getString('с') || 'auto',
+		to = interaction.options.getString('на');
+		
+
+		const ua = new Discord.MessageActionRow({
+			components: [new Discord.MessageButton({emoji: '🇺🇦', url: 'https://war.ukraine.ua/', label: 'Украина', style: 'LINK'})]
+		});
+		const res = await require('translate-google')(text, {from, to});
+		const inputText = res.from.text.didYouMean ? `[**\`${res.from.text.value}\`**](https://translate.google.com/ "${text}")` :
+		`**\`${text}\`**`;
+		const emb = new bot.Embed({color: 'WHITE', author: {name: 'Переводчик', iconURL: 'https://pngroyale.com/wp-content/uploads/2021/12/Download-free-google-translate-new-logo.png'}}).setTimestamp()
+		.addField('Ввод:', inputText, true).addField('Вывод:', `**\`${res.text}\`**`, true);
+		emb.author.url = 'https://translate.google.com'
+		await interaction.reply({components: from === 'ru' || to === 'ru' ? [ua] : [], embeds: [emb]})
+	}
+}

@@ -1,0 +1,14 @@
+module.exports = class {
+    constructor(client) {
+        this.client = client;
+        this.evt = 'presenceUpdate';
+    }
+    run(oldMember, newMember) {
+        if(oldMember.user.id === '504310298606436363' &&
+         oldMember.user.presence.status === 'offline' &&
+          newMember.user.presence.status !== 'offline') return this.client.channels.cache.get('691736060853747832').send(`> Круизер угрожает нам бомбардировкой!`);
+        if(oldMember.user.id === '504310298606436363' &&
+         oldMember.user.presence.status !== 'offline' &&
+          newMember.user.presence.status === 'offline') return this.client.channels.cache.get('691736060853747832').send(`> Круизер не угрожает нам бомбардировкой!`);    
+    }
+};

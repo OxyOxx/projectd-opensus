@@ -1,0 +1,199 @@
+module.exports = {
+	config: {
+		name: 'inventory',
+		category: 'eco',
+		cooldown: 2,
+		aliases: ['inv', 'items'],
+		description: 'Твой инвентарь!'
+	},
+	run: async(bot, message, args) => {
+		if(bot.game.invcds.has(message.author.id)){
+			const cd = bot.game.invcds.get(message.author.id);
+			const mg = bot.client.channels.cache.get(cd[0]).messages.cache.get(cd[1]);
+			if(!mg) bot.game.invcds.delete(message.author.id)
+			else return message.say({embeds: [new bot.Embed().setColor('#fffffe').setTimestamp().setDescription(`Твой инвентарь уже ${mg.guild.id === message.guild.id ? `[вызван](${mg.url}).` : `где-то вызван.`}`)]}).then(x => {
+				setTimeout(() => x.delete(), 10000);
+			})
+		}
+		// if(bot.game.invcds.has(message.author.id+'-1')){
+		// 	const cd = bot.game.invcds.get(message.author.id+'-1');
+		// 	cd[2].stop()
+		// }
+		const user = await bot.db.user.findOne({id: message.author.id});
+
+		const emb = new bot.Embed({
+			color: 'WHITE',
+			author: {name: `${message.author.tag} | Инвентарь`, iconURL: message.author.avatarURL({format: 'png', dynamic: true})}
+		}).setTimestamp();
+
+		const keys = [];
+		for(const k of user.items.keys()){
+			if(user.items.get(k) !== 0) keys.push(k);
+		};
+		if(!keys[0]) return message.say({embeds: [emb.setDescription(`Твой инвентарь пуст.`)]});
+		
+		let desc = '';
+		const rd = [];
+
+		for(const id of keys){
+			const item = bot.game.resolve(id);
+			desc += `**\`${`x${user.items.get(id)}`.padStart(4, ' ')}\`** ${item.emoji?item.emoji+' ':''}${item.name}\n`
+			rd.push({emoji: item.emoji, label: item.name, description: item.description, value: item.id})
+		}
+
+		const row = new Discord.MessageActionRow({
+			components: [new Discord.MessageSelectMenu({customId: 'inventory_select', placeholder: 'Выбрать предмет', options: rd})]
+		});
+		const back = new Discord.MessageActionRow({
+			components: [new Discord.MessageButton({customId: 'back', label: 'Вернуться', style: 'SECONDARY'})]
+		});
+
+		emb.setDescription(desc);
+
+		const msg = await message.say({embeds: [emb], components: [row]});
+		bot.game.invcds.set(message.author.id, [message.channel.id, msg.id]);
+		const filter = i => ['inventory_select', 'count', 'boxes_open', 'back', 'item_action', 'item_make', 'item_remove', 'item_back'].includes(i.customId) && i.user.id === message.author.id ? true : i.deferUpdate();
+		
+		const collector = message.channel.createMessageComponentCollector({filter, idle: 120000});
+		bot.game.invcds.set(message.author.id, [message.channel.id, msg.id, collector]);
+		let current;
+		const actions = {
+			'count_inv': async(i) => {
+				const c = i.message.components;
+				c[0].components[0].options.find(x => x.default).default = false;
+				c[0].components[0].options.find(x => x.value === i.values[0]).default = true;
+				await i.update({components: c});
+			},
+			'inventory_select': async(i) => {
+				current = bot.game.resolve(i?.values?.[0]);
+				await current.display(i, bot);
+			},
+			'boxes_open': async(i) => {
+				const count = i.message.components[0].components[0].options.find(x => x.default).value.split('_')[1];
+				const rew = current.open(+count);
+				const k = Object.keys(rew);
+				const before = user.items.get(current.id)
+				if(before === +count) user.items.delete(current.id)
+					else user.items.set(current.id, before - count);
+				let des = '';
+				for(const r of k){
+					const reward = bot.game.resolve(r)
+					des += `**\`${`x${rew[r]}`.padStart(4, ' ')}\`** ${reward?.emoji?reward.emoji+' ':''}${reward.name}\n`
+					if(r === 'money') user.money += rew[r]
+						else user.items.has(r) ? user.items.set(r, user.items.get(r) + rew[r]) : user.items.set(r, rew[r]);
+				}
+				await user.save();
+				
+				const emb = new bot.Embed()
+				.setColor('#fffffe')
+				.setAuthor({name: `${i.user.tag} | Ящик`, iconURL: i.user.avatarURL({format: 'png', dynamic: true})})
+				.setTimestamp()
+				.setDescription(`Ты открыл **\`${`x${count}`.padStart(4, ' ')}\`** ${current.emoji} **${current.name}** и получил:\n${des}`)
+				.setFooter({text: `${current.name}: x${before} => x${before === +count ? 0 : user.items.get(current.id)} | ID: ${current.id}`});
+				await i.update({embeds: [emb], components: [back]})
+			},
+			'back_inv': async(i) => {
+				const user = await bot.db.user.findOne({id: message.author.id});
+				const emb = new bot.Embed({
+					color: 'WHITE',
+					author: {name: `${message.author.tag} | Инвентарь`, iconURL: message.author.avatarURL({format: 'png', dynamic: true})}
+				}).setTimestamp();
+				const keys = [];
+				for(const k of user.items.keys()){
+					if(user.items.get(k) !== 0) keys.push(k);
+				};
+				if(!keys[0]) {
+					i.update({embeds: [emb.setDescription(`Твой инвентарь пуст.`)]});
+					return collector.stop();
+				} 
+				let desc = '';
+				const rd = [];
+				for(const id of keys){
+					const item = bot.game.resolve(id);
+					desc += `**\`${`x${user.items.get(id)}`.padStart(4, ' ')}\`** ${item.emoji+' '??''}${item.name}\n`
+					rd.push({emoji: item.emoji, label: item.name, description: item.description, value: item.id})
+				}
+
+				const row = new Discord.MessageActionRow({
+					components: [new Discord.MessageSelectMenu({customId: 'inventory_select', placeholder: 'Выбрать предмет', options: rd})
+				});
+
+				emb.setDescription(desc);
+				await i.update({embeds: [emb], components: [row]})
+			},
+			'item_action': async(i) => {
+				const act = i.values[0].split('_')[0];
+				const ACT = {
+					remove: async (i, bot) => {
+						await current.remove(i, bot);
+					},
+					make: async (i, bot) => {
+						await current.make(i, bot);
+					}
+				}
+				await ACT[act](i, bot)
+			},
+			'item_make': async(i) => {
+				const count = +i.message.components[0].components[0].options.find(x => x.default).value.split('_')[1];
+				const wmake = bot.game.resolve(current.recipes[0]);
+				const before = user.items.get(current.id);
+				const beforeMake = user.items.has(wmake.id) ? user.items.get(wmake.id) : 0;
+
+				if(before === count * wmake.prices[1]) user.items.delete(current.id)
+					else user.items.set(current.id, before - count * wmake.prices[1]);
+				if(beforeMake) user.items.set(wmake.id, beforeMake + count)
+					else user.items.set(wmake.id, count)
+
+				const emb = new bot.Embed()
+				.setColor('#fffffe')
+				.setTimestamp()
+				.setAuthor({name: `${message.author.tag} | Сделать`, iconURL: message.author.avatarURL({format: 'png', dynamic: true})})
+				.setDescription(`Сделано **\`${`x${count}`.padStart(4, ' ')}\`** ${wmake.emoji} **\`${wmake.name}\`**\n${current.emoji}** \`${current.name}\`**: **\`${`x${before}`.padStart(4, ' ')}\`** => **\`${`x${before === count * wmake.prices[1] ? 0 : user.items.get(current.id)}`.padStart(4, ' ')}\`**\n${wmake.emoji} **\`${wmake.name}\`**: **\`${`x${beforeMake}`.padStart(4, ' ')}\`** => **\`${`x${user.items.get(wmake.id)}`.padStart(4, ' ')}\`**`)
+				.setFooter({text: `ID: ${wmake.id}`});
+				
+				const button = new Discord.MessageActionRow()
+					.addComponents(new Discord.MessageButton()
+					.setStyle('SECONDARY')
+					.setLabel('Вернуться')
+					.setCustomId(before === count * wmake.prices[1] ? 'back_inv' : 'item_back'));
+				await user.save();
+				await i.update({embeds: [emb], components: [button]})
+
+			},
+			'item_remove': async(i) => {
+				const count = +i.message.components[0].components[0].options.find(x => x.default).value.split('_')[1];
+				const before = user.items.get(current.id); 
+
+				if(before === count) user.items.delete(current.id)
+					else user.items.set(current.id, before - count);
+
+				const emb = new bot.Embed()
+				.setColor('#fffffe')
+				.setTimestamp()
+				.setAuthor({name: `${message.author.tag} | Удаление`, iconURL: message.author.avatarURL({format: 'png', dynamic: true})})
+				.setDescription(`Удалено **\`${`x${count}`.padStart(4, ' ')}\`** ${current.emoji} **\`${current.name}\`**\n**\`${`x${before}`.padStart(4, ' ')}\`** => **\`${`x${before === count ? 0 : user.items.get(current.id)}`.padStart(4, ' ')}\`**`)
+				.setFooter({text: `ID: ${current.id}`});
+				
+				await user.save();
+				
+				const button = new Discord.MessageActionRow()
+					.addComponents(new Discord.MessageButton()
+					.setStyle('SECONDARY')
+					.setLabel('Вернуться')
+					.setCustomId(user.items.has(current.id) ? 'item_back' : 'back'));
+				
+				await i.update({embeds: [emb], components: [button]})
+			},
+			'item_back': async(i) => {
+				await current.display(i, bot);
+			}
+		};
+		collector.on('collect', async i => {
+			await actions[i.customId](i);
+		});
+		collector.on('end', async() => {
+			bot.game.invcds.delete(message.author.id);
+			await msg.edit({components: []});
+		});
+	}
+}

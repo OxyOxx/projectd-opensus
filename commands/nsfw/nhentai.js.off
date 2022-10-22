@@ -1,0 +1,41 @@
+const api = new (require('nhentai-api').API)();
+module.exports = {
+	config: {
+		name: 'nhentai',
+		category: 'nsfw',
+		cooldown: 3,
+		aliases: ['nh', 'nhen'],
+		description: 'nhentai. Это всё объясняет.',
+		usage: '[id] <read>'
+	},
+	run: async(bot, message, args) => {
+		//return message.say('> На переделке, скоре будет... или же нет.')
+		if(!message.channel.nsfw) return message.say({embeds: [new bot.Embed().setColor('#fffffe').setTimestamp().setDescription(`Этот канал не NSFW.`)]});
+		if(!args[0]) return message.say({embeds: [new bot.Embed().setColor('#fffffe').setTimestamp().setDescription(`Укажите номер манги/додзинси с [nhentai](https://nhentai.net "NSFW")`)]});
+		if(/\d{1,7}/.test(args[0])){
+			const data = await api.getBook(+args[0]);
+			if(!data) return message.say('> Такого нет!')
+			if(args[args.length-1] === 'read'){
+				const pages = new Pages(message.author);
+				let i = 0;
+				for(const page of data.pages){
+					i++;
+					const e = new bot.Embed(new bot.Embed().setColor('#fffffe').setTimestamp().setFooter(`${i}/${data.details.pages[0]}`).setImage(page));
+					pages.add(e);
+				}
+				pages.send(message);
+				return;
+			}
+			const res = new bot.Embed()
+			.setColor('#fffffe')
+			.setTimestamp()
+			.setURL(data.link)
+			.setTitle(data.title)
+			.setThumbnail(data.thumbnails[0])
+			.setFooter({text: `Страниц: ${data.details.pages[0]}`})
+			.setDescription(`Категория: **\`${data.details.categories}\`**\nТэги: **\`#${data.details.tags.join('`, `#') || 'нету'}\`**\nПародирование: **\`${data.details?.parodies ? data.details?.parodies : 'Оригинальное'}\`**\nАвтор(ы): **\`${data.details.artists.join('`**, **`')}\`**\nЯзыки: **\`${data.details.languages.join('`**, **`') || 'нету'}\`** `)
+			return message.say({embeds: [res]});
+		} else message.say({embeds: [new bot.Embed().setColor('#fffffe').setTimestamp().setDescription(`Не было найдено ничего по вашему запросу.`)]});
+
+	}
+};

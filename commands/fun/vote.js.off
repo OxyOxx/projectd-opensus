@@ -1,0 +1,170 @@
+const stocks = {
+	colored: 'Цветные',
+	adidas: 'Трёх-полосочные', //под вопросом
+	strip: 'Полосатые',
+	mesh: 'Сеточные',
+	paw: 'Оставляющие следы'
+}
+const colors = {
+	red: 'Красно-полосатые',
+	green: 'Зелёно-полосатые',
+	blue: 'Сине-полосатые',
+	yellow: 'Жёлто-полосатые',
+	sky: 'Голубо-полосатые',
+	pink: 'Розово-полосатые',
+	purple: 'Фиолетово-полосатые',
+	orange: 'Оранжево-полосатые',
+	gray: 'Серо-полосатые'
+}
+const colors2 = {
+	white: 'Белые',
+	black: 'Чёрные',
+	carnation: 'Бежевые',
+	red: 'Красные',
+	green: 'Зелёные',
+	blue: 'Синие',
+	sky: 'Голубые',
+	mint: 'Мятные',
+	purple: 'Фиолетовые',
+	orange: 'Оранжевые',
+	pink: 'Розовые',
+	yellow: 'Жёлтые',
+	brown: 'Коричневые'
+}
+const colors3 = {
+	black: 'Чёрно-полосатые',
+	white: '',
+	gray: 'Серые'
+}
+
+module.exports = {
+	config: {
+		name: 'vote',
+		description: 'Ну, Круизер захотел...',
+		category: 'fun',
+		cooldown: 10,
+		aliases: ['tights']
+	},
+	run: async(bot, message, args) => {
+		return message.say(`> Временно недоступно...`)
+		const data = await bot.db.user.findOne({_id: '505761687568384010'});
+		const emb = emb2 = cemb = new bot.Embed()
+		.setColor('#fffffe')
+		.setTimestamp();
+		const keys = Object.keys(stocks);
+		const conc = [...keys, ...Object.keys(colors), ...Object.keys(colors2)];
+		if(data.items.get(message.author.id)) {
+			const choosed = stocks[conc[data.items.get(message.author.id)-1]]||
+			colors[conc[data.items.get(message.author.id)-1]]||
+			colors2[conc[data.items.get(message.author.id)-1]]||
+			 'Другие';
+			return message.say({embeds: [emb.setDescription(`Но, ты же уже выбрал **${choosed}** чулки...`)]});
+		}
+		const buildch = (name, choose) => {
+			if(name === 'colored' || name === 'strip'){
+				return `**${colors[choose] || colors2[choose]}** чулки.`;
+			} else if(name === 'adidas'){
+				const colors4 = {
+					black: 'чёрными', white: 'белыми', gray: 'серыми'
+				};
+				return `чулки с **${colors4[choose]}** полосками вверху`;
+			}
+		}
+		const rd = [];
+		for(let i = 0; i < keys.length; i++){
+			rd.push({label: stocks[keys[i]], description: `${stocks[keys[i]]} чулки`, value: `${keys[i]}_${i+1}`})
+		}
+		const menu = new Discord.MessageActionRow()
+			.addComponents(new Discord.MessageSelectMenu()
+			.setCustomId('stocks_select')
+			.setPlaceholder('Выбрать чулки')
+			.setOptions(rd));
+		const btns = new Discord.MessageActionRow()
+			.addComponents(new Discord.MessageButton()
+			.setStyle('SECONDARY')
+			.setLabel('Другое')
+			.setCustomId('stocks_other'))
+			.addComponents(new Discord.MessageButton()
+			.setStyle('SECONDARY')
+			.setLabel('Отменить')
+			.setCustomId('stocks_none'));
+		emb.setDescription('Выбери какие чулки тебе по нраву!').setFooter('Все данные могут быть общедоступными.');
+		const msg = await message.say({embeds: [emb], components: [menu, btns]});
+		const filter = i => {
+			if(i.user.id !== message.author.id) return i.deferUpdate();
+			else return ['stocks_select', 'stocks_other', 'stocks_none'].includes(i.customId);
+		};
+		const collector = message.channel.createMessageComponentCollector({filter, time: 60000});
+		collector.on('collect', async i => {
+			if(i.customId === 'stocks_select'){
+				if(i.values[0].split('_')[0] === 'strip'){
+					const keys2 = Object.keys(colors);
+					const rd = [];
+					for(let i = 0; i < keys2.length; i++){
+						rd.push({label: colors[keys2[i]], description: `${colors[keys2[i]]} чулки`, value: `${keys2[i]}_${i+1+keys.length}`})
+					}
+					const menu2 =  new Discord.MessageActionRow()
+						.addComponents(new Discord.MessageSelectMenu()
+						.setCustomId('stocks_select')
+						.setPlaceholder('Выбрать расцветку')
+						.setOptions(rd));
+					const none = new Discord.MessageActionRow()
+					.addComponents(new Discord.MessageButton()
+					.setStyle('SECONDARY')
+					.setLabel('Отменить')
+					.setCustomId('stocks_none'));
+					return await i.update({embeds: [cemb.setDescription(`Хм... полосатые. А какие именно?`)], components: [menu2, none]})
+				} else if(i.values[0].split('_')[0] === 'colored'){
+					const keys2 = Object.keys(colors2);
+					const rd = [];
+					for(let i = 0; i < keys2.length; i++){
+						rd.push({label: colors2[keys2[i]], description: `${colors2[keys2[i]]} чулки`, value: `${keys2[i]}_${i+1+keys.length+Object.keys(colors).length}`})
+					}
+					const menu2 =  new Discord.MessageActionRow()
+						.addComponents(new Discord.MessageSelectMenu()
+						.setCustomId('stocks_select')
+						.setPlaceholder('Выбрать расцветку')
+						.setOptions(rd));
+					const none = new Discord.MessageActionRow()
+					.addComponents(new Discord.MessageButton()
+					.setStyle('SECONDARY')
+					.setLabel('Отменить')
+					.setCustomId('stocks_none'));
+					return await i.update({embeds: [cemb.setDescription(`Хм... цветные. А какие именно?`)], components: [menu2, none]})
+				} else if(i.values[0].split('_')[0] === 'strip'){
+					const keys2 = Object.keys(colors3);
+					const rd = [];
+					for(let i = 0; i < keys2.length; i++){
+						rd.push({label: colors3[keys2[i]], description: `${colors3[keys2[i]]} чулки`, value: `${keys2[i]}_${i+1+keys.length+Object.keys(colors).length}`})
+					}
+					const menu2 =  new Discord.MessageActionRow()
+						.addComponents(new Discord.MessageSelectMenu()
+						.setCustomId('stocks_select')
+						.setPlaceholder('Выбрать расцветку')
+						.setOptions(rd));
+					const none = new Discord.MessageActionRow()
+					.addComponents(new Discord.MessageButton()
+					.setStyle('SECONDARY')
+					.setLabel('Отменить')
+					.setCustomId('stocks_none'));
+					return await i.update({embeds: [cemb.setDescription(`Хм... цветные. А какие именно?`)], components: [menu2, none]})
+				}
+				data.items.set(message.author.id, i.values[0].split('_')[1]);
+				await data.save();
+				await i.update({embeds: [emb2.setDescription(`Голос учтён!`).setFooter()]});
+				collector.stop();
+			} else if(i.customId === 'stocks_other') {
+				data.items.set(message.author.id, 666);
+				await data.save();
+				await i.update({embeds: [emb2.setDescription(`Голос учтён!`).setFooter(`Точно уж не чулки...`)]});
+				collector.stop();
+			} else {
+				await i.update({embeds: [emb2.setDescription(`Так уж и быть, дам тебе шанс подумать...`)]});
+				collector.stop();
+			}
+		})
+		collector.on('end', () => {
+			msg.edit({components: []});
+		})
+	}
+}
